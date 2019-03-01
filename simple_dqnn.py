@@ -7,7 +7,7 @@ from collections import deque
 import gym
 import numpy as np
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Activation
 from keras.optimizers import Adam
 from keras import backend as K
 import tensorflow as tf
@@ -47,7 +47,7 @@ class AtariPlayer:
         totalReward = 0
         countPredicted = 0
         self.__currentState = self.__env.reset()
-        self.__memory = deque(maxlen=MAXMEMORY)
+        # self.__memory = deque(maxlen=MAXMEMORY)
 
         # run the game
         for i in range(maxSteps):
@@ -106,28 +106,37 @@ class DQNNetwork:
         self.epsilon_decay = epsilon_decay
         self.learning_rate = learning_rate
 
+    def setEpsilon(self, eps):
+        self.epsilon = eps
+
     def generateAction(self, state):
         s = np.reshape(state, [1, self.state_size])
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size), 0
 
         act_values = self.__model.predict(s)
-        return np.argmax(act_values[0]), 1
+        # print(act_values[0])
+        action = np.argmax(act_values[0])
+        # print(action)
+        return action, 1
 
     def trainModel(self, memory, batch_size):
         minibatch = random.sample(memory, batch_size)
         for state, action, reward, done, next_state in minibatch:
             cs = np.reshape(state, [1, self.state_size])
             ns = np.reshape(next_state, [1, self.state_size])
-            # print(state)
+            # print('state', state)
             target = self.__model.predict(cs)
-
-            if done:
-                target[0][action] = reward
+            if reward > 0:
+            # if done:
+                target[0][action] += reward
             else:
-                t = self.__target_model.predict(ns)[0]
-                target[0][action] = reward + self.gamma * np.amax(t)
+                q_target = self.__target_model.predict(ns)
+                max_val = np.amax(q_target[0])
+                future = self.gamma * max_val
+                target[0][action] = future
 
+            # print('reward / target: ', reward, ' / ', target)
             self.__model.fit(cs, target, epochs=1, verbose=0)
 
         if self.epsilon > self.epsilon_min:
@@ -154,7 +163,8 @@ class DQNNetwork:
         model.add(Dense(hiddenLayerSize, input_dim=self.state_size, activation='relu'))
         model.add(Dense(hiddenLayerSize, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
-        model.compile(loss=self._huber_loss, optimizer=Adam(lr=self.learning_rate))
+        model.compile(loss='mse', optimizer=Adam(lr=self.learning_rate))
+        # model.compile(loss=self._huber_loss, optimizer=Adam(lr=self.learning_rate))
         return model
 
     def initModel(self, hiddenLayerSize = 128):
@@ -188,6 +198,7 @@ def setup(layerDim = 24, gameName = None):
     # deep reinforcement q-learn NN
     global dqnn_
     if gameName == None:
+        # dqnn_ = DQNNetwork(states, actions, gamma = 0.95, epsilon = 0.15)
         dqnn_ = DQNNetwork(states, actions)
     else:
         dqnn_ = DQNNetwork(states, actions, gameName)

@@ -45,6 +45,7 @@ class AtariPlayer:
     def runSession(self, maxSteps, shouldRender = False, actionGen = None):
         #clean up
         totalReward = 0
+        countPredicted = 0
         self.__currentState = self.__env.reset()
         self.__memory = deque(maxlen=MAXMEMORY)
 
@@ -52,11 +53,13 @@ class AtariPlayer:
         for i in range(maxSteps):
             # get a action
             if actionGen != None:
-                action = actionGen(self.__currentState)
+                action, isPredicted = actionGen(self.__currentState)
                 if LOGDEBUG:
                     print("DQNN Action: ", action)
             else:
-                action = self.__env.action_space.sample()
+                action, isPredicted = self.__env.action_space.sample()
+
+            countPredicted += isPredicted
 
             # perform a step and memorize outcome
             next_state, reward, done, _ = self.__env.step(action)
@@ -78,7 +81,7 @@ class AtariPlayer:
                         print("Current State: ")
                         print(self.__memory[-1])
 
-        return (i, totalReward)
+        return (i, totalReward, countPredicted)
 
     # current environment data
     def getCurrentObservations(self):
@@ -106,11 +109,10 @@ class DQNNetwork:
     def generateAction(self, state):
         s = np.reshape(state, [1, self.state_size])
         if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_size)
+            return random.randrange(self.action_size), 0
 
-        print("DQNNetwork: Predcited Action")
         act_values = self.__model.predict(s)
-        return np.argmax(act_values[0])  # returns action
+        return np.argmax(act_values[0]), 1
 
     def trainModel(self, memory, batch_size):
         minibatch = random.sample(memory, batch_size)
@@ -159,7 +161,7 @@ class DQNNetwork:
         self.__model = self._build_model(hiddenLayerSize)
         self.__target_model = self._build_model(hiddenLayerSize)
         DQNNetwork.copyModelWeights(self.__model, self.__target_model)
-        self.__model.summary()
+        #  self.__model.summary()
 
     def load(self, name):
         self.__model.load_weights(name)
@@ -191,26 +193,23 @@ def setup(layerDim = 24, gameName = None):
         dqnn_ = DQNNetwork(states, actions, gameName)
     dqnn_.initModel(layerDim)
 
-def run(episondes = 5, shouldRender = False):
+def run(episodes = 5, shouldRender = False):
     global dqnn_
     global player_
 
-    # train #episondes sessions
+    # train #episodes sessions
     actGen = dqnn_.generateAction
-    for _ in range(episondes):
+    for e in range(episodes):
         # play a session
-        actions, total = player_.runSession(MAXMEMORY, shouldRender, actGen)
-        print('Performed ',actions,' iterations - Total Score: ', total)
+        actions, score, predicted = player_.runSession(MAXMEMORY, shouldRender, actGen)
+        print(e,' - PerformedIterations: ', actions,' - TotalScore: ', score, ' - Predictions%: ', 100*predicted/actions)
         memory = player_.getMemory()
 
         # train the model
-        if(len(memory)>=500):
-            dqnn_.trainModel(memory, 500)
+        dqnn_.trainModel(memory, int(len(memory)/2))
 
     # player_.printEnvironment()
     # print(player_.getCurrentObservations())
-
-    player_.shutdown()
 
 def loadModel(filename):
     global dqnn_
@@ -222,7 +221,10 @@ def saveModel(filename):
 
 ### main
 if __name__ == '__main__':
-    setup()
-    loadModel('simple_dqnn.h5')
-    run(100)
-    saveModel('simple_dqnn.h5')
+    setup(512)
+    for _ in range(1000):
+        loadModel('simple_dqnn.h5')
+        run(25)
+        saveModel('simple_dqnn.h5')
+
+    player_.shutdown()

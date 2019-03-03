@@ -120,6 +120,9 @@ class DQNNetwork:
         # print(action)
         return action, 1
 
+    # FIXME: check these links:
+    #   https://github.com/danielegrattarola/deep-q-atari/blob/master/DQNetwork.py
+    #   https://github.com/keras-rl/keras-rl/blob/master/examples/dqn_atari.py
     def trainModel(self, memory, batch_size):
         minibatch = random.sample(memory, batch_size)
         for state, action, reward, done, next_state in minibatch:
